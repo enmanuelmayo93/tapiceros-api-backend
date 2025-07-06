@@ -3,27 +3,37 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Initialize Firebase Admin SDK
-if (!admin.apps.length) {
-  const serviceAccount = {
-    type: 'service_account',
-    project_id: process.env.FIREBASE_PROJECT_ID,
-    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-    private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    client_email: process.env.FIREBASE_CLIENT_EMAIL,
-    client_id: process.env.FIREBASE_CLIENT_ID,
-    auth_uri: process.env.FIREBASE_AUTH_URI,
-    token_uri: process.env.FIREBASE_TOKEN_URI,
-    auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
-    client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
-  };
+// Initialize Firebase Admin SDK only if credentials are available
+let firebaseAdmin: admin.app.App | null = null;
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
-  });
+if (!admin.apps.length && process.env['FIREBASE_PROJECT_ID'] && process.env['FIREBASE_PRIVATE_KEY']) {
+  try {
+    const serviceAccount = {
+      type: 'service_account',
+      project_id: process.env['FIREBASE_PROJECT_ID'],
+      private_key_id: process.env['FIREBASE_PRIVATE_KEY_ID'],
+      private_key: process.env['FIREBASE_PRIVATE_KEY']?.replace(/\\n/g, '\n'),
+      client_email: process.env['FIREBASE_CLIENT_EMAIL'],
+      client_id: process.env['FIREBASE_CLIENT_ID'],
+      auth_uri: process.env['FIREBASE_AUTH_URI'],
+      token_uri: process.env['FIREBASE_TOKEN_URI'],
+      auth_provider_x509_cert_url: process.env['FIREBASE_AUTH_PROVIDER_X509_CERT_URL'],
+      client_x509_cert_url: process.env['FIREBASE_CLIENT_X509_CERT_URL'],
+    };
+
+    firebaseAdmin = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+    });
+    console.log('Firebase Admin SDK initialized successfully');
+  } catch (error) {
+    console.warn('Firebase Admin SDK initialization failed:', error);
+    console.warn('Push notifications will be disabled');
+  }
+} else {
+  console.warn('Firebase credentials not found. Push notifications will be disabled');
 }
 
-export const firebaseAdmin = admin;
+export { firebaseAdmin };
 
 // Send notification to a single device
 export const sendNotificationToDevice = async (
@@ -35,13 +45,18 @@ export const sendNotificationToDevice = async (
   },
   data?: Record<string, string>
 ) => {
+  if (!firebaseAdmin) {
+    console.warn('Firebase not initialized. Notification not sent.');
+    return null;
+  }
+
   try {
     const message: admin.messaging.Message = {
       token,
       notification: {
         title: notification.title,
         body: notification.body,
-        imageUrl: notification.imageUrl,
+        ...(notification.imageUrl && { imageUrl: notification.imageUrl }),
       },
       data,
       android: {
@@ -79,6 +94,11 @@ export const sendNotificationToMultipleDevices = async (
   },
   data?: Record<string, string>
 ) => {
+  if (!firebaseAdmin) {
+    console.warn('Firebase not initialized. Notifications not sent.');
+    return null;
+  }
+
   try {
     const message: admin.messaging.MulticastMessage = {
       tokens,
@@ -123,6 +143,11 @@ export const sendNotificationToTopic = async (
   },
   data?: Record<string, string>
 ) => {
+  if (!firebaseAdmin) {
+    console.warn('Firebase not initialized. Topic notification not sent.');
+    return null;
+  }
+
   try {
     const message: admin.messaging.Message = {
       topic,
@@ -159,6 +184,11 @@ export const sendNotificationToTopic = async (
 
 // Subscribe a device to a topic
 export const subscribeToTopic = async (tokens: string[], topic: string) => {
+  if (!firebaseAdmin) {
+    console.warn('Firebase not initialized. Topic subscription not performed.');
+    return null;
+  }
+
   try {
     const response = await firebaseAdmin.messaging().subscribeToTopic(tokens, topic);
     console.log('Successfully subscribed to topic:', response);
@@ -171,6 +201,11 @@ export const subscribeToTopic = async (tokens: string[], topic: string) => {
 
 // Unsubscribe a device from a topic
 export const unsubscribeFromTopic = async (tokens: string[], topic: string) => {
+  if (!firebaseAdmin) {
+    console.warn('Firebase not initialized. Topic unsubscription not performed.');
+    return null;
+  }
+
   try {
     const response = await firebaseAdmin.messaging().unsubscribeFromTopic(tokens, topic);
     console.log('Successfully unsubscribed from topic:', response);
