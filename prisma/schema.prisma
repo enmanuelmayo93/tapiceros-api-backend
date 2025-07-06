@@ -1,0 +1,253 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String   @id @default(uuid())
+  auth0Id          String   @unique // Auth0 user ID
+  email            String   @unique
+  name             String
+  picture          String?
+  phone            String?
+  address          String?
+  city             String?
+  state            String?
+  country          String?
+  postalCode       String?
+  bio              String?
+  role             UserRole @default(USER)
+  isVerified       Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  fcmToken         String?  // Firebase Cloud Messaging token
+  stripeCustomerId String?  // Stripe customer ID
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  posts         Post[]
+  orders        Order[]
+  comments      Comment[]
+  payments      Payment[]
+  memberships   Membership[]
+  notifications Notification[]
+  postLikes     PostLike[]
+
+  @@map("users")
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  content     String
+  images      String[] // Array of image URLs
+  likes       Int      @default(0)
+  views       Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comments    Comment[]
+  likes_users PostLike[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model PostLike {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Relations
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("post_likes")
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  clientName  String
+  clientEmail String?
+  clientPhone String?
+  address     String?
+  city        String?
+  state       String?
+  country     String?
+  postalCode  String?
+  status      OrderStatus @default(PENDING)
+  priority    Priority    @default(MEDIUM)
+  budget      Decimal?    @db.Decimal(10, 2)
+  startDate   DateTime?
+  endDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments    Payment[]
+  invoices    Invoice[]
+
+  @@map("orders")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  amount        Decimal       @db.Decimal(10, 2)
+  currency      String        @default("USD")
+  status        PaymentStatus @default(PENDING)
+  stripePaymentId String?
+  stripeSessionId String?
+  description   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId       String?
+  order         Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  membershipId  String?
+  membership    Membership?   @relation(fields: [membershipId], references: [id], onDelete: SetNull)
+
+  @@map("payments")
+}
+
+model Membership {
+  id            String           @id @default(uuid())
+  type          MembershipType
+  status        MembershipStatus @default(ACTIVE)
+  startDate     DateTime         @default(now())
+  endDate       DateTime?
+  stripeSubscriptionId String?
+  stripePriceId String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  // Relations
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments      Payment[]
+
+  @@map("memberships")
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  amount        Decimal  @db.Decimal(10, 2)
+  currency      String   @default("USD")
+  status        InvoiceStatus @default(DRAFT)
+  pdfUrl        String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("invoices")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  title     String
+  body      String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  data      Json?            // Additional data for the notification
+  sentAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  // Relations
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  USER
+  PREMIUM
+}
+
+enum OrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum MembershipType {
+  BASIC
+  PREMIUM
+  ENTERPRISE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum NotificationType {
+  ORDER_UPDATE
+  PAYMENT_RECEIVED
+  NEW_MESSAGE
+  SYSTEM
+  PROMOTIONAL
+} 
